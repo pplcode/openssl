@@ -16,14 +16,14 @@ jobs:
             arch: android-arm64
             target: aarch64-linux-android
             toolchain: aarch64-linux-android
-          - abi: armeabi-v7a
-            arch: android-arm
-            target: armv7-linux-androideabi
-            toolchain: arm-linux-androideabi
-          - abi: x86_64
-            arch: android-x86_64
-            target: x86_64-linux-android
-            toolchain: x86_64-linux-android
+        #  - abi: armeabi-v7a
+        #    arch: android-arm
+        #    target: armv7-linux-androideabi
+        #    toolchain: arm-linux-androideabi
+        #  - abi: x86_64
+        #    arch: android-x86_64
+        #    target: x86_64-linux-android
+        #    toolchain: x86_64-linux-android
           # - abi: x86  (現在很少人還需要32位x86，可視需求開啟)
           #   arch: android-x86
           #   target: i686-linux-android
@@ -48,17 +48,25 @@ jobs:
       - name: Build OpenSSL for ${{ matrix.abi }}
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          ANDROID_API: 21               # 可改成你想要的最小 API level
+          ANDROID_API: 21
         working-directory: ./openssl-src
         run: |
-          # 設定 toolchain 路徑
-          TOOLCHAIN=${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64
-          export PATH=${TOOLCHAIN}/bin:$PATH
+          # === 關鍵修正開始 ===
 
-          export CC=clang
-          export CXX=clang++
+          TOOLCHAIN=${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64
+          export PATH="${TOOLCHAIN}/bin:${PATH}"
+
+          # 使用帶 target + api 的 clang 名稱（最可靠，避免 Configure 自己猜錯）
+          export CC=${{ matrix.toolchain }}${ANDROID_API}-clang
+          export CXX=${{ matrix.toolchain }}${ANDROID_API}-clang++
           export AR=llvm-ar
           export RANLIB=llvm-ranlib
+
+          # 確認一下（debug 用，可之後移除）
+          which ${CC} || { echo "CC not found: ${CC}"; exit 1; }
+          clang --version
+
+          # === 關鍵修正結束 ===
 
           TARGET=${{ matrix.toolchain }}${ANDROID_API}
 
