@@ -1,0 +1,93 @@
+name: Build OpenSSL shared libs for Android
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'openssl-v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - abi: arm64-v8a
+            arch: android-arm64
+            target: aarch64-linux-android
+            toolchain: aarch64-linux-android
+          - abi: armeabi-v7a
+            arch: android-arm
+            target: armv7-linux-androideabi
+            toolchain: arm-linux-androideabi
+          - abi: x86_64
+            arch: android-x86_64
+            target: x86_64-linux-android
+            toolchain: x86_64-linux-android
+          # - abi: x86  (現在很少人還需要32位x86，可視需求開啟)
+          #   arch: android-x86
+          #   target: i686-linux-android
+          #   toolchain: i686-linux-android
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup NDK r27d
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27d
+          link-to-sdk: false
+
+      - name: Download OpenSSL source (3.3.x branch recommended in 2026)
+        run: |
+          git clone --depth 1 --branch openssl-3.3.2 https://github.com/openssl/openssl.git openssl-src
+          cd openssl-src
+
+      - name: Build OpenSSL for ${{ matrix.abi }}
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ANDROID_API: 24                 # 可改成你想要的最小 API level
+        working-directory: ./openssl-src
+        run: |
+          # 設定 toolchain 路徑
+          TOOLCHAIN=${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64
+          export PATH=${TOOLCHAIN}/bin:$PATH
+
+          export CC=clang
+          export CXX=clang++
+          export AR=llvm-ar
+          export RANLIB=llvm-ranlib
+
+          TARGET=${{ matrix.toolchain }}${ANDROID_API}
+
+          ./Configure ${{ matrix.arch }} \
+            -D__ANDROID_API__=${ANDROID_API} \
+            no-asm \
+            no-tests \
+            no-comp \
+            no-weak-ssl-ciphers \
+            no-legacy \
+            no-module \
+            shared \
+            -fPIC \
+            --prefix=/tmp/openssl-${{ matrix.abi }} \
+            --openssldir=/tmp/openssl-${{ matrix.abi }}/ssl
+
+          make -j$(nproc) build_sw
+          make install_sw
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts/${{ matrix.abi }}/lib
+          cp /tmp/openssl-${{ matrix.abi }}/lib/libcrypto.so* artifacts/${{ matrix.abi }}/lib/
+          cp /tmp/openssl-${{ matrix.abi }}/lib/libssl.so*    artifacts/${{ matrix.abi }}/lib/
+          cp -r /tmp/openssl-${{ matrix.abi }}/include        artifacts/${{ matrix.abi }}/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openssl-android-${{ matrix.abi }}
+          path: artifacts/${{ matrix.abi }}/
+          if-no-files-found: error
