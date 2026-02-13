@@ -48,7 +48,7 @@ jobs:
       - name: Build OpenSSL for ${{ matrix.abi }}
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          ANDROID_API: 24                 # 可改成你想要的最小 API level
+          ANDROID_API: 21               # 可改成你想要的最小 API level
         working-directory: ./openssl-src
         run: |
           # 設定 toolchain 路徑
